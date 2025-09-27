@@ -422,10 +422,42 @@ P值: {p_value:.6e}
         export_window = tk.Toplevel(self.root)
         export_window.title("导出图片设置")
         export_window.geometry("500x450")  # 增大窗口尺寸
-        export_window.resizable(False, False)
+        export_window.resizable(True, True)  # 允许调整窗口大小
+        
+        # 创建主滚动区域
+        main_canvas = tk.Canvas(export_window)
+        scrollbar = ttk.Scrollbar(export_window, orient="vertical", command=main_canvas.yview)
+        
+        # 创建框架以包含所有设置
+        settings_frame = ttk.Frame(main_canvas)
+        
+        # 配置画布滚动
+        main_canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # 打包滚动条和画布
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        main_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        # 在画布上创建窗口以显示设置框架
+        canvas_frame = main_canvas.create_window((0, 0), window=settings_frame, anchor="nw")
+        
+        # 配置画布大小随窗口调整
+        def configure_canvas(event):
+            main_canvas.itemconfig(canvas_frame, width=event.width)
+        main_canvas.bind('<Configure>', configure_canvas)
+        
+        # 更新画布滚动区域
+        def on_frame_configure(event):
+            main_canvas.configure(scrollregion=main_canvas.bbox("all"))
+        settings_frame.bind("<Configure>", on_frame_configure)
+        
+        # 绑定鼠标滚轮事件
+        def _on_mousewheel(event):
+            main_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        main_canvas.bind_all("<MouseWheel>", _on_mousewheel)
         
         # 文件格式选择
-        format_frame = ttk.LabelFrame(export_window, text="文件格式", padding=15)
+        format_frame = ttk.LabelFrame(settings_frame, text="文件格式", padding=15)
         format_frame.pack(fill=tk.X, padx=15, pady=10)
         
         format_var = tk.StringVar(value="png")
@@ -437,7 +469,7 @@ P值: {p_value:.6e}
                           font=self.default_font, bg=export_window.cget('bg')).pack(anchor=tk.W, pady=2)
         
         # 质量设置
-        quality_frame = ttk.LabelFrame(export_window, text="图片质量", padding=15)
+        quality_frame = ttk.LabelFrame(settings_frame, text="图片质量", padding=15)
         quality_frame.pack(fill=tk.X, padx=15, pady=10)
         
         ttk.Label(quality_frame, text="DPI (分辨率):", font=self.default_font).pack(anchor=tk.W)
@@ -447,7 +479,7 @@ P值: {p_value:.6e}
         dpi_combo.pack(anchor=tk.W, pady=5)
         
         # 尺寸设置
-        size_frame = ttk.LabelFrame(export_window, text="图片尺寸", padding=15)
+        size_frame = ttk.LabelFrame(settings_frame, text="图片尺寸", padding=15)
         size_frame.pack(fill=tk.X, padx=15, pady=10)
         
         ttk.Label(size_frame, text="宽度 (英寸):", font=self.default_font).grid(row=0, column=0, sticky=tk.W, pady=3)
@@ -459,7 +491,7 @@ P值: {p_value:.6e}
         ttk.Entry(size_frame, textvariable=height_var, width=12, font=self.default_font).grid(row=1, column=1, padx=8, pady=3)
         
         # 按钮
-        button_frame = ttk.Frame(export_window)
+        button_frame = ttk.Frame(settings_frame)
         button_frame.pack(fill=tk.X, padx=15, pady=15)
         
         def do_export():
@@ -592,7 +624,7 @@ P值: {p_value:.6e}
                             
                             export_ax.plot(x_fit, y_fit, 'r-', linewidth=2, 
                                          label=f'拟合线: y = {self._slope:.4f}x + {self._intercept:.4f}')
-                            export_ax.set_title(f'{self.chart_title} - 线性拟合结果', 
+                            export_ax.set_title(f'{self.chart_title}', 
                                                fontsize=font_size+2, fontweight='bold')
                         except:
                             export_ax.set_title(self.chart_title, fontsize=font_size+2, fontweight='bold')
