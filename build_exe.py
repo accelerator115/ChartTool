@@ -12,8 +12,8 @@ PyInstaller.__main__.run([
     script_path,
     '--name=ChartTool',
     '--onefile',  # 生成单个可执行文件
-    '--add-data=sample_data.csv;.',  # 添加示例数据文件
-    '--icon=NONE',  # 默认图标
+    '--windowed',  # 不显示命令行窗口
+    '--icon=D:\\Desktop\\work\\ChartTool\\icon.ico',  # 使用f-string正确格式化图标路径
     '--clean',  # 清理临时文件
 ])
 

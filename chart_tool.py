@@ -21,9 +21,10 @@ class ChartTool:
         # self.root.attributes('-zoomed', True)  # Linux下全屏的备选方案
         
         # 多曲线数据存储
-        self.curves = {}  # 存储多条曲线: {曲线名称: {'x': [], 'y': [], 'color': 'color_name', 'visible': True}}
+        self.curves = {}  # 存储多条曲线: {曲线名称: {'x': [], 'y': [], 'color': 'color_name', 'visible': True, 'marker': 'marker_style'}}
         self.current_curve = None  # 当前选中的曲线
         self.colors = ['blue', 'red', 'green', 'orange', 'purple', 'brown', 'pink', 'gray', 'olive', 'cyan']
+        self.markers = ['o', 's', '^', 'D', 'v', 'p', '*', 'x', '+', 'h']  # 圆形、方形、三角形、菱形等
         
         # 添加一条默认曲线
         self.add_new_curve("曲线1")
@@ -32,6 +33,19 @@ class ChartTool:
         self.chart_title = "多曲线数据图"
         self.x_label = "X轴"
         self.y_label = "Y轴"
+        
+        # 添加图例控制变量
+        self.legend_positions = {
+            "右上角": "upper right",
+            "右下角": "lower right", 
+            "左上角": "upper left",
+            "左下角": "lower left",
+            "中右": "center right",
+            "中左": "center left",
+            "下中": "lower center",
+            "上中": "upper center",
+            "中心": "center"
+        }
         
         # 设置默认字体样式
         self.default_font = ("Microsoft YaHei", 11)
@@ -48,13 +62,16 @@ class ChartTool:
                 i += 1
             name = f"{name}_{i}"
             
-        # 选择颜色 - 循环使用颜色列表
-        color_index = len(self.curves) % len(self.colors)
+        # 选择颜色和标记 - 循环使用颜色和标记列表
+        curve_index = len(self.curves)
+        color_index = curve_index % len(self.colors)
+        marker_index = curve_index % len(self.markers)
         
         self.curves[name] = {
             'x': [],
             'y': [],
             'color': self.colors[color_index],
+            'marker': self.markers[marker_index],
             'visible': True,
             'fit_params': None  # 用于存储拟合参数
         }
@@ -217,11 +234,44 @@ class ChartTool:
         font_size_combo.bind('<<ComboboxSelected>>', self.on_font_size_change)
         font_size_combo.grid(row=3, column=1, padx=(8, 0), pady=3, sticky=tk.EW)
         
+        # 添加图例控制
+        legend_frame = ttk.Frame(chart_settings_frame)
+        legend_frame.grid(row=4, column=0, columnspan=2, sticky=tk.EW, pady=(8, 0))
+        
+        # 图例显示控制
+        self.show_legend_var = tk.BooleanVar(value=True)
+        show_legend_chk = ttk.Checkbutton(legend_frame, text="显示图例", 
+                                       variable=self.show_legend_var, 
+                                       command=self.update_chart)
+        show_legend_chk.pack(side=tk.LEFT, padx=(0, 15))
+        
+        # 图例位置选择
+        ttk.Label(legend_frame, text="图例位置:", font=self.default_font).pack(side=tk.LEFT)
+        self.legend_pos_var = tk.StringVar(value="upper right")
+        legend_positions = [
+            ("右上角", "upper right"),
+            ("右下角", "lower right"),
+            ("左上角", "upper left"),
+            ("左下角", "lower left"),
+            ("中右", "center right"),
+            ("中左", "center left"),
+            ("下中", "lower center"),
+            ("上中", "upper center"),
+            ("中心", "center")
+        ]
+        legend_pos_names = [name for name, _ in legend_positions]
+        legend_pos_values = [value for _, value in legend_positions]
+        
+        legend_pos_combo = ttk.Combobox(legend_frame, textvariable=self.legend_pos_var,
+                                      values=legend_pos_names, width=8, font=self.default_font)
+        legend_pos_combo.pack(side=tk.LEFT, padx=(5, 0))
+        legend_pos_combo.bind('<<ComboboxSelected>>', lambda e: self.on_legend_pos_change())
+        
         chart_settings_frame.columnconfigure(1, weight=1)
         
         # 重置按钮
         reset_btn = ttk.Button(chart_settings_frame, text="重置标签", command=self.reset_labels)
-        reset_btn.grid(row=4, column=0, columnspan=2, pady=(15, 0), sticky=tk.EW)
+        reset_btn.grid(row=5, column=0, columnspan=2, pady=(15, 0), sticky=tk.EW)
         
         # 分析控制
         analysis_frame = ttk.LabelFrame(left_frame, text="分析控制", padding=15)
@@ -797,9 +847,10 @@ class ChartTool:
             if curve['visible'] and curve['x'] and curve['y']:
                 has_visible_data = True
                 
-                # 绘制数据点
+                # 绘制数据点 - 使用特定颜色和形状
+                marker = curve.get('marker', 'o')  # 如果没有marker属性则默认使用圆形
                 self.ax.scatter(curve['x'], curve['y'], color=curve['color'], 
-                             alpha=0.7, s=50, label=f'{name} - 数据点')
+                             marker=marker, alpha=0.7, s=50, label=f'{name}')
                 
                 # 如果有拟合参数，绘制拟合线
                 if curve['fit_params'] is not None:
@@ -812,27 +863,20 @@ class ChartTool:
                     # 使用存储的拟合函数(如果有)或者根据拟合类型计算y值
                     if 'fit_func' in curve and callable(curve['fit_func']):
                         y_fit = curve['fit_func'](x_fit)
+                        # 使用与数据点相同的颜色
+                        fit_color = curve['color']
+                        # 绘制拟合曲线（不添加到图例）
+                        self.ax.plot(x_fit, y_fit, color=fit_color, linestyle='-', linewidth=2)
                     else:
                         # 向后兼容旧的线性拟合参数
                         if 'slope' in fit_params and 'intercept' in fit_params:
                             slope = fit_params['slope']
                             intercept = fit_params['intercept']
                             y_fit = slope * x_fit + intercept
-                        else:
-                            continue
-                    
-                    # 使用与数据点相同的颜色
-                    fit_color = curve['color']
-                    
-                    # 根据拟合类型生成标签
-                    if 'equation' in fit_params:
-                        fit_label = f'{name} - 拟合: {fit_params["equation"]}'
-                    else:
-                        # 向后兼容
-                        fit_label = f'{name} - 拟合: y = {fit_params.get("slope", 0):.4f}x + {fit_params.get("intercept", 0):.4f}'
-                    
-                    # 绘制拟合曲线
-                    self.ax.plot(x_fit, y_fit, color=fit_color, linestyle='-', linewidth=2, label=fit_label)
+                            # 使用与数据点相同的颜色
+                            fit_color = curve['color']
+                            # 绘制拟合曲线（不添加到图例）
+                            self.ax.plot(x_fit, y_fit, color=fit_color, linestyle='-', linewidth=2)
         
         if not has_visible_data:
             self.ax.set_title("请添加数据点", fontsize=font_size+2, fontweight='bold')
@@ -840,9 +884,16 @@ class ChartTool:
         # 设置刻度标签字体大小
         self.ax.tick_params(axis='both', which='major', labelsize=font_size-1)
         
-        # 添加图例 - 仅当有曲线时
-        if has_visible_data:
-            self.ax.legend(fontsize=font_size-1)
+        # 根据用户选择添加图例
+        if has_visible_data and self.show_legend_var.get():
+            # 获取选择的图例位置
+            legend_pos = self.legend_pos_var.get()
+            # 尝试直接使用位置值，如果失败则从映射中获取
+            legend_loc = legend_pos
+            if legend_pos in self.legend_positions:
+                legend_loc = self.legend_positions[legend_pos]
+            
+            self.ax.legend(fontsize=font_size-1, loc=legend_loc, framealpha=0.9)
         
         self.canvas.draw()
     
@@ -1210,9 +1261,10 @@ P值: {p_value:.6e}
                         if curve['visible'] and curve['x'] and curve['y']:
                             has_visible_data = True
                             
-                            # 绘制数据点
+                            # 绘制数据点 - 使用特定颜色和形状
+                            marker = curve.get('marker', 'o')  # 如果没有marker属性则默认使用圆形
                             export_ax.scatter(curve['x'], curve['y'], color=curve['color'], 
-                                         alpha=0.7, s=50, label=f'{name} - 数据点')
+                                         marker=marker, alpha=0.7, s=50, label=f'{name}')
                             
                             # 如果有拟合参数，绘制拟合线
                             if curve['fit_params'] is not None:
@@ -1225,35 +1277,35 @@ P值: {p_value:.6e}
                                 # 使用存储的拟合函数(如果有)或者根据拟合类型计算y值
                                 if 'fit_func' in curve and callable(curve['fit_func']):
                                     y_fit = curve['fit_func'](x_fit)
+                                    # 使用与数据点相同的颜色
+                                    fit_color = curve['color']
+                                    # 绘制拟合曲线（不添加到图例）
+                                    export_ax.plot(x_fit, y_fit, color=fit_color, linestyle='-', linewidth=2)
                                 else:
                                     # 向后兼容旧的线性拟合参数
                                     if 'slope' in fit_params and 'intercept' in fit_params:
                                         slope = fit_params['slope']
                                         intercept = fit_params['intercept']
                                         y_fit = slope * x_fit + intercept
-                                    else:
-                                        continue
-                                
-                                # 使用与数据点相同的颜色
-                                fit_color = curve['color']
-                                
-                                # 根据拟合类型生成标签
-                                if 'equation' in fit_params:
-                                    fit_label = f'{name} - 拟合: {fit_params["equation"]}'
-                                else:
-                                    # 向后兼容
-                                    fit_label = f'{name} - 拟合线: y = {fit_params.get("slope", 0):.4f}x + {fit_params.get("intercept", 0):.4f}'
-                                
-                                # 绘制拟合曲线
-                                export_ax.plot(x_fit, y_fit, color=fit_color, linestyle='-', linewidth=2, label=fit_label)
-                    
+                                        # 使用与数据点相同的颜色
+                                        fit_color = curve['color']
+                                        # 绘制拟合曲线（不添加到图例）
+                                        export_ax.plot(x_fit, y_fit, color=fit_color, linestyle='-', linewidth=2)
+            
                     if not has_visible_data:
                         export_ax.set_title("无数据", fontsize=font_size+2, fontweight='bold')
                     else:
-                        export_ax.legend(fontsize=font_size-1)
-                    
-                    export_ax.tick_params(axis='both', which='major', labelsize=font_size-1)
-                    
+                        # 根据用户设置显示图例
+                        if self.show_legend_var.get():
+                            # 获取选择的图例位置
+                            legend_pos = self.legend_pos_var.get()
+                            # 尝试直接使用位置值，如果失败则从映射中获取
+                            legend_loc = legend_pos
+                            if legend_pos in self.legend_positions:
+                                legend_loc = self.legend_positions[legend_pos]
+                        
+                            export_ax.legend(fontsize=font_size-1, loc=legend_loc, framealpha=0.9)
+            
                     # 调整布局
                     export_fig.tight_layout()
                     
@@ -1335,9 +1387,10 @@ P值: {p_value:.6e}
                     if curve['visible'] and curve['x'] and curve['y']:
                         has_visible_data = True
                         
-                        # 绘制数据点
+                        # 绘制数据点 - 使用特定颜色和形状
+                        marker = curve.get('marker', 'o')  # 如果没有marker属性则默认使用圆形
                         export_ax.scatter(curve['x'], curve['y'], color=curve['color'], 
-                                     alpha=0.7, s=50, label=f'{name} - 数据点')
+                                     marker=marker, alpha=0.7, s=50, label=f'{name}')
                         
                         # 如果有拟合参数，绘制拟合线
                         if curve['fit_params'] is not None:
@@ -1350,33 +1403,34 @@ P值: {p_value:.6e}
                             # 使用存储的拟合函数(如果有)或者根据拟合类型计算y值
                             if 'fit_func' in curve and callable(curve['fit_func']):
                                 y_fit = curve['fit_func'](x_fit)
+                                # 使用与数据点相同的颜色
+                                fit_color = curve['color']
+                                # 绘制拟合曲线（不添加到图例）
+                                export_ax.plot(x_fit, y_fit, color=fit_color, linestyle='-', linewidth=2)
                             else:
                                 # 向后兼容旧的线性拟合参数
                                 if 'slope' in fit_params and 'intercept' in fit_params:
                                     slope = fit_params['slope']
                                     intercept = fit_params['intercept']
                                     y_fit = slope * x_fit + intercept
-                                else:
-                                    continue
-                            
-                            # 使用与数据点相同的颜色
-                            fit_color = curve['color']
-                            
-                            # 根据拟合类型生成标签
-                            if 'equation' in fit_params:
-                                fit_label = f'{name} - 拟合: {fit_params["equation"]}'
-                            else:
-                                # 向后兼容
-                                fit_label = f'{name} - 拟合线: y = {fit_params.get("slope", 0):.4f}x + {fit_params.get("intercept", 0):.4f}'
-                            
-                            # 绘制拟合曲线
-                            export_ax.plot(x_fit, y_fit, color=fit_color, linestyle='-', linewidth=2, label=fit_label)
-                
+                                    # 使用与数据点相同的颜色
+                                    fit_color = curve['color']
+                                    # 绘制拟合曲线（不添加到图例）
+                                    export_ax.plot(x_fit, y_fit, color=fit_color, linestyle='-', linewidth=2)
+            
                 if not has_visible_data:
                     export_ax.set_title("无数据", fontsize=font_size+2, fontweight='bold')
                 else:
-                    # 添加图例
-                    export_ax.legend(fontsize=font_size-1)
+                    # 根据用户设置显示图例
+                    if self.show_legend_var.get():
+                        # 获取选择的图例位置
+                        legend_pos = self.legend_pos_var.get()
+                        # 尝试直接使用位置值，如果失败则从映射中获取
+                        legend_loc = legend_pos
+                        if legend_pos in self.legend_positions:
+                            legend_loc = self.legend_positions[legend_pos]
+                        
+                        export_ax.legend(fontsize=font_size-1, loc=legend_loc, framealpha=0.9)
                 
                 # 设置刻度标签字体大小
                 export_ax.tick_params(axis='both', which='major', labelsize=font_size-1)
@@ -1402,26 +1456,24 @@ P值: {p_value:.6e}
                 messagebox.showerror("错误", f"导出失败: {str(e)}")
 
     def export_data(self):
-        """增强的数据导出功能，支持导出多条曲线"""
-        # 检查是否有任何曲线数据
-        has_data = False
-        for curve in self.curves.values():
-            if curve['x'] and curve['y']:
-                has_data = True
-                break
-                
-        if not has_data:
-            messagebox.showerror("错误", "没有数据可以导出!")
+        """导出当前选择曲线的数据"""
+        if not self.current_curve:
+            messagebox.showerror("错误", "请先选择一条曲线!")
+            return
+            
+        curve = self.curves[self.current_curve]
+        if not curve['x'] or not curve['y']:
+            messagebox.showerror("错误", f"当前选择的曲线 '{self.current_curve}' 没有数据可以导出!")
             return
         
         # 生成默认文件名
         import datetime
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        default_name = f"data_{timestamp}.csv"
+        default_name = f"{self.current_curve}_{timestamp}.csv"
         
         file_path = filedialog.asksaveasfilename(
-            title="导出数据",
-            initialfile=default_name,  # 修正参数名
+            title=f"导出 '{self.current_curve}' 曲线数据",
+            initialfile=default_name,
             defaultextension=".csv",
             filetypes=[
                 ("CSV文件", "*.csv"), 
@@ -1434,33 +1486,68 @@ P值: {p_value:.6e}
         
         if file_path:
             try:
-                # 创建带有所有曲线数据的DataFrame
-                data_dict = {}
-                
-                for name, curve in self.curves.items():
-                    if curve['x'] and curve['y']:
-                        data_dict[f"{name}_X"] = curve['x']
-                        data_dict[f"{name}_Y"] = curve['y']
-                
-                df = pd.DataFrame(data_dict)
-                
                 if file_path.endswith('.csv'):
-                    df.to_csv(file_path, index=False, encoding='utf-8-sig')
-                elif file_path.endswith('.xlsx'):
-                    df.to_excel(file_path, index=False)
-                elif file_path.endswith('.json'):
-                    df.to_json(file_path, orient='records', indent=2)
-                else:
-                    # 保存为文本文件
-                    with open(file_path, 'w', encoding='utf-8') as f:
-                        f.write(f"{self.x_label}\t{self.y_label}\n")
-                        for x, y in zip(self.x_data, self.y_data):
-                            f.write(f"{x}\t{y}\n")
+                    # 导出为CSV格式
+                    import csv
+                    with open(file_path, 'w', encoding='utf-8-sig', newline='') as f:
+                        writer = csv.writer(f)
+                        writer.writerow(["X", "Y"])
+                        
+                        for i in range(len(curve['x'])):
+                            writer.writerow([curve['x'][i], curve['y'][i]])
                 
-                messagebox.showinfo("成功", f"数据已导出到:\n{file_path}")
+                elif file_path.endswith('.xlsx'):
+                    # 导出为Excel格式
+                    df = pd.DataFrame({
+                        "X": curve['x'],
+                        "Y": curve['y']
+                    })
+                    
+                    with pd.ExcelWriter(file_path) as writer:
+                        df.to_excel(writer, sheet_name=self.current_curve, index=False)
+                        
+                        # 如果有拟合参数，添加到新sheet
+                        if curve['fit_params'] is not None:
+                            fit_info = pd.DataFrame()
+                            for key, value in curve['fit_params'].items():
+                                if key != 'fit_func' and not isinstance(value, list):
+                                    fit_info.at[0, key] = value
+                            
+                            if not fit_info.empty:
+                                fit_info.to_excel(writer, sheet_name='拟合信息', index=False)
+                
+                elif file_path.endswith('.json'):
+                    # 导出为JSON格式
+                    import json
+                    json_data = {
+                        "curve_name": self.current_curve,
+                        "color": curve['color'],
+                        "points": []
+                    }
+                    
+                    for i in range(len(curve['x'])):
+                        json_data["points"].append({"x": curve['x'][i], "y": curve['y'][i]})
+                    
+                    # 如果有拟合参数，也添加进去
+                    if curve['fit_params'] is not None:
+                        json_data["fit"] = {k: v for k, v in curve['fit_params'].items() 
+                                          if k != 'fit_func' and not isinstance(v, np.ndarray)}
+                    
+                    # 写入JSON文件
+                    with open(file_path, 'w', encoding='utf-8') as f:
+                        json.dump(json_data, f, indent=2, ensure_ascii=False)
+                        
+                else:
+                    # 导出为文本文件 (.txt)
+                    with open(file_path, 'w', encoding='utf-8') as f:
+                        f.write(f"曲线: {self.current_curve}\n")
+                        f.write(f"X\tY\n")
+                        for i in range(len(curve['x'])):
+                            f.write(f"{curve['x'][i]}\t{curve['y'][i]}\n")
+                
+                messagebox.showinfo("成功", f"曲线 '{self.current_curve}' 的数据已导出到:\n{file_path}")
             except Exception as e:
                 messagebox.showerror("错误", f"导出失败: {str(e)}")
-
     # 新增实时更新方法
     def on_title_change(self, event):
         """标题实时更新"""
@@ -1490,6 +1577,8 @@ P值: {p_value:.6e}
         self.ylabel_entry.delete(0, tk.END)
         self.ylabel_entry.insert(0, "Y轴")
         self.font_size_var.set("14")  # 默认字体大小改为14
+        self.show_legend_var.set(True)  # 默认显示图例
+        self.legend_pos_var.set("右上角")  # 默认图例位置
         self.update_chart_labels()
         
     def show_fit_type_help(self):
